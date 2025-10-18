@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Academic Poster Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PDF.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <!-- html2canvas library for PNG generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Simple scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Styles for the off-screen div used for rendering the poster for html2canvas */
+        .poster-render-container {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+            padding: 32px;
+            background-color: #f3f4f6; /* Poster background color */
+            font-family: 'Inter', sans-serif;
+        }
+        .poster-render-section {
+            background-color: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            color: #374151;
+        }
+        .poster-render-section h3 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #000000; /* Black subheadings */
+            margin-bottom: 12px;
+            border-bottom: 2px solid #e5e7eb; /* Light gray border */
+            padding-bottom: 8px;
+        }
+        .poster-render-section p {
+            font-size: 16px;
+            line-height: 1.6;
+        }
+         /* Grid spanning for the render container */
+        .render-grid-span-12 { grid-column: span 12; }
+        .render-grid-span-8 { grid-column: span 8; }
+        .render-grid-span-6 { grid-column: span 6; }
+        .render-grid-span-4 { grid-column: span 4; }
+
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app" class="min-h-screen p-4 sm:p-8">
+        <!-- Input & Output Panel -->
+        <div class="w-full max-w-4xl mx-auto bg-white p-6 sm:p-8 shadow-xl rounded-2xl">
+            <h1 class="text-3xl font-bold text-blue-600 mb-2">Academic Poster Generator</h1>
+            <p class="text-gray-600 mb-6">Upload your academic paper to automatically generate a poster image.</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label for="fileUpload" class="block text-sm font-medium text-gray-700 mb-1">Upload Document (.pdf, .txt, .md)</label>
+                    <input type="file" id="fileUpload" accept=".pdf,.txt,.md,.text" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
+                </div>
+
+                <!-- Hidden textarea to hold document text in the background -->
+                <div class="hidden">
+                    <textarea id="documentText"></textarea>
+                </div>
+
+                <div class="flex items-center justify-center space-x-1 rounded-lg bg-gray-200 p-1 w-fit mx-auto">
+                    <button id="portraitBtn" class="px-4 py-1 text-sm font-medium text-white bg-blue-600 rounded-md focus:outline-none">Portrait</button>
+                    <button id="landscapeBtn" class="px-4 py-1 text-sm font-medium text-gray-700 bg-transparent rounded-md focus:outline-none">Landscape</button>
+                </div>
+                
+                <button id="generateBtn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-300 flex items-center justify-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.86 5.89a2 2 0 01-1.28 1.28l-2.72.65c-1.56.38-1.56 2.6 0 2.98l2.72.65a2 2 0 011.28 1.28l.65 2.72c.38 1.56 2.6 1.56 2.98 0l.65-2.72a2 2 0 011.28-1.28l2.72-.65c-1.56.38-1.56-2.6 0-2.98l-2.72-.65a2 2 0 01-1.28-1.28L11.49 3.17zM15.5 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM6 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" clip-rule="evenodd" /></svg>
+                    <span>Generate Poster</span>
+                </button>
+            </div>
+             <!-- Error Message Box -->
+            <div id="errorMessage" class="hidden mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"></div>
+
+            <!-- Output Section -->
+            <div id="posterOutput" class="w-full mt-8 border-t pt-8">
+                <!-- Placeholder -->
+                <div id="placeholder" class="flex flex-col items-center justify-center h-full min-h-[30vh] text-center bg-gray-50 rounded-lg p-8">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <h2 class="text-2xl font-bold text-gray-600">Your Poster Image Will Appear Here</h2>
+                    <p class="text-gray-500 mt-2 max-w-md">Upload a document and click "Generate Poster" to create your PNG.</p>
+                </div>
+
+                <!-- Loading Spinner -->
+                <div id="loading" class="hidden flex flex-col items-center justify-center h-full min-h-[30vh] text-center bg-gray-50 rounded-lg p-8">
+                    <div class="loader mb-4"></div>
+                    <h2 class="text-2xl font-bold text-gray-600">Generating Poster Image...</h2>
+                    <p class="text-gray-500 mt-2">This may take a moment for large documents.</p>
+                </div>
+                
+                <!-- Generated Poster Content -->
+                <div id="posterContent" class="hidden text-center">
+                    <!-- The generated PNG will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const generateBtn = document.getElementById('generateBtn');
+        const documentText = document.getElementById('documentText');
+        const fileUpload = document.getElementById('fileUpload');
+        const posterOutput = document.getElementById('posterOutput');
+        const placeholder = document.getElementById('placeholder');
+        const loading = document.getElementById('loading');
+        const posterContent = document.getElementById('posterContent');
+        const errorMessage = document.getElementById('errorMessage');
+        const portraitBtn = document.getElementById('portraitBtn');
+        const landscapeBtn = document.getElementById('landscapeBtn');
+
+        let currentOrientation = 'portrait';
+
+        // Setup PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
+
+        const API_KEY = ""; // Use "" for SDK-less calls
+        const MODEL_NAME = "gemini-2.5-flash-preview-05-20";
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+
+        // The schema for the AI model to follow
+        const responseSchema = {
+            type: "OBJECT",
+            properties: {
+                title: { type: "STRING" }, authors: { type: "STRING" }, affiliations: { type: "STRING" },
+                introduction: { type: "STRING" }, objectives: { type: "STRING" }, methods: { type: "STRING" },
+                results: { type: "STRING" }, discussion: { type: "STRING" }, conclusion: { type: "STRING" },
+                references: { type: "STRING" }, acknowledgements: { type: "STRING" }, contact: { type: "STRING" }
+            },
+            required: ["title", "authors", "affiliations", "introduction", "objectives", "methods", "results", "discussion", "conclusion"]
+        };
+
+        generateBtn.addEventListener('click', handleGenerate);
+        fileUpload.addEventListener('change', handleFileUpload);
+        portraitBtn.addEventListener('click', () => setOrientation('portrait'));
+        landscapeBtn.addEventListener('click', () => setOrientation('landscape'));
+
+        function setOrientation(orientation) {
+            currentOrientation = orientation;
+            if (orientation === 'portrait') {
+                portraitBtn.classList.add('bg-blue-600', 'text-white');
+                portraitBtn.classList.remove('bg-transparent', 'text-gray-700');
+                landscapeBtn.classList.add('bg-transparent', 'text-gray-700');
+                landscapeBtn.classList.remove('bg-blue-600', 'text-white');
+            } else {
+                landscapeBtn.classList.add('bg-blue-600', 'text-white');
+                landscapeBtn.classList.remove('bg-transparent', 'text-gray-700');
+                portraitBtn.classList.add('bg-transparent', 'text-gray-700');
+                portraitBtn.classList.remove('bg-blue-600', 'text-white');
+            }
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            documentText.value = '';
+            hideError();
+
+            if (file.type === 'application/pdf') {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    generateBtn.disabled = true;
+                    generateBtn.textContent = 'Processing PDF...';
+                    try {
+                        const pdfData = new Uint8Array(e.target.result);
+                        const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                        let fullText = '';
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            fullText += pageText + '\n\n';
+                        }
+                        documentText.value = fullText;
+                    } catch (error) {
+                        showError('Error processing PDF file. It might be corrupted or image-based.');
+                        console.error('PDF.js error:', error);
+                        documentText.value = '';
+                    } finally {
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.86 5.89a2 2 0 01-1.28 1.28l-2.72.65c-1.56.38-1.56 2.6 0 2.98l2.72.65a2 2 0 011.28 1.28l.65 2.72c.38 1.56 2.6 1.56 2.98 0l.65-2.72a2 2 0 011.28-1.28l2.72-.65c-1.56.38-1.56-2.6 0-2.98l-2.72-.65a2 2 0 01-1.28-1.28L11.49 3.17zM15.5 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM6 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" clip-rule="evenodd" /></svg><span>Generate Poster</span>`;
+                    }
+                };
+                reader.onerror = (e) => showError('There was an error reading the file.');
+                reader.readAsArrayBuffer(file);
+            } else if (file.type.startsWith('text/') || file.name.endsWith('.md')) {
+                const reader = new FileReader();
+                reader.onload = (e) => { documentText.value = e.target.result; };
+                reader.onerror = (e) => showError('There was an error reading the file.');
+                reader.readAsText(file);
+            } else {
+                showError('Please upload a valid file type (.pdf, .txt, .md).');
+                event.target.value = null;
+            }
+        }
+
+        async function handleGenerate() {
+            const text = documentText.value.trim();
+            if (!text) {
+                showError("Please upload a file first.");
+                return;
+            }
+
+            // --- UI Updates: Start Loading ---
+            hideError();
+            placeholder.classList.add('hidden');
+            loading.classList.remove('hidden');
+            posterContent.classList.add('hidden');
+            generateBtn.disabled = true;
+            generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                const posterData = await callGeminiAPI(text);
+                if (posterData) {
+                    await renderPosterAsImage(posterData, currentOrientation);
+                } else {
+                    showError("Failed to generate poster. The model returned an empty response.");
+                }
+            } catch (error)
+                 {
+                console.error('Error generating poster:', error);
+                showError(`An error occurred: ${error.message}.`);
+            } finally {
+                // --- UI Updates: Stop Loading ---
+                loading.classList.add('hidden');
+                generateBtn.disabled = false;
+                generateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        async function callGeminiAPI(text) {
+            const systemPrompt = "You are an expert academic assistant. Your task is to analyze the provided text from a journal article and convert it into a concise, well-structured academic poster format. Extract and summarize the key information for each required section. Adhere strictly to the provided JSON schema for your output.";
+
+            const payload = {
+                contents: [{ parts: [{ text: `Here is the academic paper text:\n\n${text}` }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema,
+                    temperature: 0.5,
+                }
+            };
+            
+            let response;
+            let retries = 3;
+            let delay = 1000;
+            while (retries > 0) {
+                try {
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) break; 
+                    if (response.status === 429) { 
+                        console.warn(`Request throttled. Retrying in ${delay}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; 
+                        retries--;
+                    } else {
+                        throw new Error(`API request failed with status: ${response.status}`);
+                    }
+                } catch (error) {
+                    retries = 0; // Fail fast on network errors
+                    throw error;
+                }
+            }
+
+            if (!response || !response.ok) {
+                throw new Error("Failed to get a successful response from the API after retries.");
+            }
+
+            const result = await response.json();
+            const candidate = result.candidates?.[0];
+
+            if (candidate?.content?.parts?.[0]?.text) {
+                try {
+                    return JSON.parse(candidate.content.parts[0].text);
+                } catch (e) {
+                    console.error("Failed to parse JSON response:", candidate.content.parts[0].text);
+                    throw new Error("The model returned a response that was not valid JSON.");
+                }
+            } else {
+                console.error("Invalid response structure:", result);
+                throw new Error("The API returned an unexpected response structure.");
+            }
+        }
+        
+        async function renderPosterAsImage(data, orientation = 'portrait') {
+            posterContent.innerHTML = ''; 
+            
+            const renderContainer = document.createElement('div');
+            renderContainer.className = 'poster-render-container';
+
+            const createSection = (title, content, gridClass) => {
+                if (!content || content.trim() === '' || content.trim().toLowerCase() === 'n/a') return '';
+                return `
+                    <div class="poster-render-section ${gridClass}">
+                        <h3>${title}</h3>
+                        <p>${content.replace(/\n/g, '<br>')}</p>
+                    </div>`;
+            };
+
+            let posterHTML = '';
+
+            const headerHTML = `
+                <div class="render-grid-span-12 text-center bg-white p-8 rounded-lg shadow-lg">
+                    <h2 style="font-size: 48px; font-weight: 800; margin-bottom: 12px; color: #000000;">${data.title || ''}</h2>
+                    <p style="font-size: 28px; color: #374151;">${data.authors || ''}</p>
+                    <p style="font-size: 22px; color: #4b5563; font-style: italic; margin-top: 8px;">${data.affiliations || ''}</p>
+                </div>
+            `;
+
+            if (orientation === 'portrait') {
+                renderContainer.style.width = '1800px';
+                posterHTML = `
+                    ${headerHTML}
+                    ${createSection('Introduction / Background', data.introduction, 'render-grid-span-8')}
+                    ${createSection('Objectives / Aims', data.objectives, 'render-grid-span-4')}
+                    ${createSection('Methods / Methodology', data.methods, 'render-grid-span-6')}
+                    ${createSection('Results', data.results, 'render-grid-span-6')}
+                    ${createSection('Discussion', data.discussion, 'render-grid-span-12')}
+                    ${createSection('Conclusion', data.conclusion, 'render-grid-span-12')}
+                    ${createSection('References', data.references, 'render-grid-span-4')}
+                    ${createSection('Acknowledgements', data.acknowledgements, 'render-grid-span-4')}
+                    ${createSection('Contact Information', data.contact, 'render-grid-span-4')}
+                `;
+            } else { // Landscape
+                renderContainer.style.width = '2400px';
+                posterHTML = `
+                    ${headerHTML}
+                    ${createSection('Introduction / Background', data.introduction, 'render-grid-span-6')}
+                    ${createSection('Objectives / Aims', data.objectives, 'render-grid-span-6')}
+                    ${createSection('Methods / Methodology', data.methods, 'render-grid-span-6')}
+                    ${createSection('Results', data.results, 'render-grid-span-6')}
+                    ${createSection('Discussion', data.discussion, 'render-grid-span-8')}
+                    ${createSection('Conclusion', data.conclusion, 'render-grid-span-4')}
+                    ${createSection('References', data.references, 'render-grid-span-4')}
+                    ${createSection('Acknowledgements', data.acknowledgements, 'render-grid-span-4')}
+                    ${createSection('Contact Information', data.contact, 'render-grid-span-4')}
+                `;
+            }
+
+
+            renderContainer.innerHTML = posterHTML;
+
+            // Append to body off-screen to render
+            document.body.appendChild(renderContainer);
+            renderContainer.style.position = 'absolute';
+            renderContainer.style.left = '-9999px';
+
+            try {
+                const canvas = await html2canvas(renderContainer, { scale: 2 }); // Increase scale for better quality
+                const imgData = canvas.toDataURL('image/png');
+
+                const img = document.createElement('img');
+                img.src = imgData;
+                img.className = 'w-full h-auto rounded-lg shadow-lg border';
+                
+                const downloadLink = document.createElement('a');
+                downloadLink.href = imgData;
+                downloadLink.download = `academic-poster-${orientation}.png`;
+                downloadLink.className = 'mt-4 inline-block bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 transition-colors duration-300';
+                downloadLink.textContent = 'Download Poster (PNG)';
+
+                posterContent.appendChild(img);
+                posterContent.appendChild(downloadLink);
+                posterContent.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error generating image with html2canvas:', error);
+                showError('Sorry, there was an error creating the poster image.');
+            } finally {
+                // Clean up the off-screen div
+                document.body.removeChild(renderContainer);
+            }
+        }
+
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>
+
+
+
