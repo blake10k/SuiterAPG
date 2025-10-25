@@ -43,6 +43,9 @@
             padding: 24px;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
             color: #374151;
+            /* Ensure long words break to prevent overflow */
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         .poster-render-section h3 {
             font-size: 28px;
@@ -52,9 +55,11 @@
             border-bottom: 2px solid #e5e7eb; /* Light gray border */
             padding-bottom: 8px;
         }
-        .poster-render-section p {
+        .poster-render-section p, 
+        .poster-render-section div { /* Use div for rendered HTML */
             font-size: 16px;
             line-height: 1.6;
+            white-space: pre-wrap; /* Respect newlines from textareas */
         }
          /* Grid spanning for the render container */
         .render-grid-span-12 { grid-column: span 12; }
@@ -82,7 +87,7 @@
         <!-- Input & Output Panel -->
         <div class="w-full max-w-4xl mx-auto bg-white p-6 sm:p-8 shadow-xl rounded-2xl">
             <h1 class="text-3xl font-bold text-blue-600 mb-2">Academic Poster Generator</h1>
-            <p class="text-gray-600 mb-6">Upload your academic paper to automatically generate a poster image.</p>
+            <p class="text-gray-600 mb-6">Upload your academic paper, edit the auto-generated content, and export as a PNG.</p>
             
             <div class="space-y-4">
                 <div>
@@ -96,13 +101,13 @@
                 </div>
 
                 <div class="flex items-center justify-center space-x-1 rounded-lg bg-gray-200 p-1 w-fit mx-auto">
-                    <button id="portraitBtn" class="px-4 py-1 text-sm font-medium text-white bg-blue-600 rounded-md focus:outline-none">Portrait</button>
-                    <button id="landscapeBtn" class="px-4 py-1 text-sm font-medium text-gray-700 bg-transparent rounded-md focus:outline-none">Landscape</button>
+                    <button id="portraitBtn" class="px-4 py-1 text-sm font-medium text-gray-700 bg-transparent rounded-md focus:outline-none">Portrait</button>
+                    <button id="landscapeBtn" class="px-4 py-1 text-sm font-medium text-white bg-blue-600 rounded-md focus:outline-none">Landscape</button>
                 </div>
                 
-                <button id="generateBtn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-300 flex items-center justify-center space-x-2">
+                <button id="generateFormBtn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-300 flex items-center justify-center space-x-2">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.86 5.89a2 2 0 01-1.28 1.28l-2.72.65c-1.56.38-1.56 2.6 0 2.98l2.72.65a2 2 0 011.28 1.28l.65 2.72c.38 1.56 2.6 1.56 2.98 0l.65-2.72a2 2 0 011.28-1.28l2.72-.65c-1.56.38-1.56-2.6 0-2.98l-2.72-.65a2 2 0 01-1.28-1.28L11.49 3.17zM15.5 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM6 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" clip-rule="evenodd" /></svg>
-                    <span>Generate Poster</span>
+                    <span>Generate Editable Poster</span>
                 </button>
             </div>
              <!-- Error Message Box -->
@@ -115,15 +120,20 @@
                      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <h2 class="text-2xl font-bold text-gray-600">Your Poster Image Will Appear Here</h2>
-                    <p class="text-gray-500 mt-2 max-w-md">Upload a document and click "Generate Poster" to create your PNG.</p>
+                    <h2 class="text-2xl font-bold text-gray-600">Your Poster Will Appear Here</h2>
+                    <p class="text-gray-500 mt-2 max-w-md">Upload a document and click "Generate" to start.</p>
                 </div>
 
                 <!-- Loading Spinner -->
                 <div id="loading" class="hidden flex flex-col items-center justify-center h-full min-h-[30vh] text-center bg-gray-50 rounded-lg p-8">
                     <div class="loader mb-4"></div>
-                    <h2 class="text-2xl font-bold text-gray-600">Generating Poster Image...</h2>
+                    <h2 id="loadingText" class="text-2xl font-bold text-gray-600">Analyzing Document...</h2>
                     <p class="text-gray-500 mt-2">This may take a moment for large documents.</p>
+                </div>
+
+                <!-- Editable Form Container -->
+                <div id="posterEditor" class="hidden space-y-6">
+                    <!-- Form fields will be dynamically injected here -->
                 </div>
                 
                 <!-- Generated Poster Content -->
@@ -135,18 +145,20 @@
     </div>
 
     <script>
-        const generateBtn = document.getElementById('generateBtn');
+        const generateFormBtn = document.getElementById('generateFormBtn');
         const documentText = document.getElementById('documentText');
         const fileUpload = document.getElementById('fileUpload');
         const posterOutput = document.getElementById('posterOutput');
         const placeholder = document.getElementById('placeholder');
         const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+        const posterEditor = document.getElementById('posterEditor');
         const posterContent = document.getElementById('posterContent');
         const errorMessage = document.getElementById('errorMessage');
         const portraitBtn = document.getElementById('portraitBtn');
         const landscapeBtn = document.getElementById('landscapeBtn');
 
-        let currentOrientation = 'portrait';
+        let currentOrientation = 'landscape';
 
         // Setup PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
@@ -166,8 +178,10 @@
             },
             required: ["title", "authors", "affiliations", "introduction", "objectives", "methods", "results", "discussion", "conclusion"]
         };
+        // Define which keys should be textareas (long text) vs. inputs (short text)
+        const longTextKeys = ['introduction', 'objectives', 'methods', 'results', 'discussion', 'conclusion', 'references', 'acknowledgements'];
 
-        generateBtn.addEventListener('click', handleGenerate);
+        generateFormBtn.addEventListener('click', handleGenerateForm);
         fileUpload.addEventListener('change', handleFileUpload);
         portraitBtn.addEventListener('click', () => setOrientation('portrait'));
         landscapeBtn.addEventListener('click', () => setOrientation('landscape'));
@@ -193,12 +207,17 @@
 
             documentText.value = '';
             hideError();
+            // Reset UI when a new file is uploaded
+            placeholder.classList.remove('hidden');
+            posterEditor.classList.add('hidden');
+            posterContent.classList.add('hidden');
+
 
             if (file.type === 'application/pdf') {
                 const reader = new FileReader();
                 reader.onload = async (e) => {
-                    generateBtn.disabled = true;
-                    generateBtn.textContent = 'Processing PDF...';
+                    generateFormBtn.disabled = true;
+                    generateFormBtn.innerHTML = `<span>Processing PDF...</span>`;
                     try {
                         const pdfData = new Uint8Array(e.target.result);
                         const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
@@ -215,8 +234,8 @@
                         console.error('PDF.js error:', error);
                         documentText.value = '';
                     } finally {
-                        generateBtn.disabled = false;
-                        generateBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.86 5.89a2 2 0 01-1.28 1.28l-2.72.65c-1.56.38-1.56 2.6 0 2.98l2.72.65a2 2 0 011.28 1.28l.65 2.72c.38 1.56 2.6 1.56 2.98 0l.65-2.72a2 2 0 011.28-1.28l2.72-.65c-1.56.38-1.56-2.6 0-2.98l-2.72-.65a2 2 0 01-1.28-1.28L11.49 3.17zM15.5 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM6 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" clip-rule="evenodd" /></svg><span>Generate Poster</span>`;
+                        generateFormBtn.disabled = false;
+                        generateFormBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0L7.86 5.89a2 2 0 01-1.28 1.28l-2.72.65c-1.56.38-1.56 2.6 0 2.98l2.72.65a2 2 0 011.28 1.28l.65 2.72c.38 1.56 2.6 1.56 2.98 0l.65-2.72a2 2 0 011.28-1.28l2.72-.65c-1.56.38-1.56-2.6 0-2.98l-2.72-.65a2 2 0 01-1.28-1.28L11.49 3.17zM15.5 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM6 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" clip-rule="evenodd" /></svg><span>Generate Editable Poster</span>`;
                     }
                 };
                 reader.onerror = (e) => showError('There was an error reading the file.');
@@ -232,7 +251,7 @@
             }
         }
 
-        async function handleGenerate() {
+        async function handleGenerateForm() {
             const text = documentText.value.trim();
             if (!text) {
                 showError("Please upload a file first.");
@@ -242,29 +261,95 @@
             // --- UI Updates: Start Loading ---
             hideError();
             placeholder.classList.add('hidden');
-            loading.classList.remove('hidden');
+            posterEditor.classList.add('hidden');
             posterContent.classList.add('hidden');
-            generateBtn.disabled = true;
-            generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            loadingText.textContent = "Analyzing Document...";
+            loading.classList.remove('hidden');
+            generateFormBtn.disabled = true;
+            generateFormBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
             try {
                 const posterData = await callGeminiAPI(text);
                 if (posterData) {
-                    await renderPosterAsImage(posterData, currentOrientation);
+                    buildEditorForm(posterData);
+                    posterEditor.classList.remove('hidden');
                 } else {
                     showError("Failed to generate poster. The model returned an empty response.");
+                    placeholder.classList.remove('hidden');
                 }
-            } catch (error)
-                 {
-                console.error('Error generating poster:', error);
+            } catch (error) {
+                console.error('Error generating poster form:', error);
                 showError(`An error occurred: ${error.message}.`);
+                placeholder.classList.remove('hidden');
             } finally {
                 // --- UI Updates: Stop Loading ---
                 loading.classList.add('hidden');
-                generateBtn.disabled = false;
-                generateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                generateFormBtn.disabled = false;
+                generateFormBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         }
+
+        function buildEditorForm(data) {
+            posterEditor.innerHTML = ''; // Clear previous form
+            let formHTML = '';
+
+            for (const key in responseSchema.properties) {
+                const label = key.charAt(0).toUpperCase() + key.slice(1);
+                const value = data[key] || '';
+                const id = `edit-${key}`;
+
+                formHTML += `<div><label for="${id}" class="block text-lg font-semibold text-gray-800 mb-2">${label}</label>`;
+
+                if (longTextKeys.includes(key)) {
+                    formHTML += `<textarea id="${id}" rows="6" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">${value}</textarea>`;
+                } else {
+                    formHTML += `<input type="text" id="${id}" value="${value}" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">`;
+                }
+                formHTML += `</div>`;
+            }
+
+            // Add the "Generate Final Image" button
+            formHTML += `<button id="generateImageBtn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors duration-300 flex items-center justify-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Generate Final PNG Image</span>
+            </button>`;
+            
+            posterEditor.innerHTML = formHTML;
+
+            // Add event listener to the newly created button
+            document.getElementById('generateImageBtn').addEventListener('click', handleGenerateImage);
+        }
+
+        async function handleGenerateImage() {
+            // --- UI Updates: Start Loading ---
+            hideError();
+            posterEditor.classList.add('hidden');
+            posterContent.classList.add('hidden');
+            loadingText.textContent = "Generating Poster Image...";
+            loading.classList.remove('hidden');
+
+            // 1. Read all data from the form
+            const editedData = {};
+            for (const key in responseSchema.properties) {
+                editedData[key] = document.getElementById(`edit-${key}`).value;
+            }
+
+            // 2. Call renderPosterAsImage
+            try {
+                // Use await to ensure image generation completes before hiding loader
+                await renderPosterAsImage(editedData, currentOrientation);
+                posterContent.classList.remove('hidden');
+            } catch (error) {
+                console.error('Error in handleGenerateImage:', error);
+                showError(`An error occurred while generating the image: ${error.message}.`);
+                posterEditor.classList.remove('hidden'); // Show editor again so they can retry
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
 
         async function callGeminiAPI(text) {
             const systemPrompt = "You are an expert academic assistant. Your task is to analyze the provided text from a journal article and convert it into a concise, well-structured academic poster format. Extract and summarize the key information for each required section. Adhere strictly to the provided JSON schema for your output.";
@@ -331,12 +416,16 @@
             const renderContainer = document.createElement('div');
             renderContainer.className = 'poster-render-container';
 
+            // This function now handles newlines from textareas
             const createSection = (title, content, gridClass) => {
                 if (!content || content.trim() === '' || content.trim().toLowerCase() === 'n/a') return '';
+                // Sanitize content to prevent HTML injection, but render newlines
+                const safeContent = document.createElement('div');
+                safeContent.textContent = content; // This automatically escapes HTML
                 return `
                     <div class="poster-render-section ${gridClass}">
                         <h3>${title}</h3>
-                        <p>${content.replace(/\n/g, '<br>')}</p>
+                        ${safeContent.outerHTML} 
                     </div>`;
             };
 
@@ -380,16 +469,20 @@
                 `;
             }
 
-
             renderContainer.innerHTML = posterHTML;
 
             // Append to body off-screen to render
             document.body.appendChild(renderContainer);
             renderContainer.style.position = 'absolute';
             renderContainer.style.left = '-9999px';
+            renderContainer.style.top = '0px'; // Ensure it's at the top
 
             try {
-                const canvas = await html2canvas(renderContainer, { scale: 2 }); // Increase scale for better quality
+                const canvas = await html2canvas(renderContainer, { 
+                    scale: 2, // Increase scale for better quality
+                    windowWidth: renderContainer.scrollWidth,
+                    windowHeight: renderContainer.scrollHeight
+                });
                 const imgData = canvas.toDataURL('image/png');
 
                 const img = document.createElement('img');
@@ -399,19 +492,41 @@
                 const downloadLink = document.createElement('a');
                 downloadLink.href = imgData;
                 downloadLink.download = `academic-poster-${orientation}.png`;
-                downloadLink.className = 'mt-4 inline-block bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 transition-colors duration-300';
+                downloadLink.className = 'mt-4 w-full inline-block bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors duration-300';
                 downloadLink.textContent = 'Download Poster (PNG)';
+
+                // --- NEW EDIT BUTTON ---
+                const editButton = document.createElement('button');
+                editButton.id = 'editPosterBtn';
+                editButton.className = 'mt-2 w-full inline-block bg-gray-300 text-gray-800 font-bold py-2 px-6 rounded-lg hover:bg-gray-400 transition-colors duration-300';
+                editButton.textContent = 'Go Back to Edit';
+
+                editButton.addEventListener('click', () => {
+                    posterContent.classList.add('hidden');
+                    posterContent.innerHTML = ''; // Clear the old image
+                    posterEditor.classList.remove('hidden');
+                    hideError();
+                    // Scroll to the editor for better UX
+                    posterEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+                // --- END NEW EDIT BUTTON ---
 
                 posterContent.appendChild(img);
                 posterContent.appendChild(downloadLink);
-                posterContent.classList.remove('hidden');
+                posterContent.appendChild(editButton); // Add the new button
+                // This is now handled in handleGenerateImage
+                // posterContent.classList.remove('hidden'); 
 
             } catch (error) {
                 console.error('Error generating image with html2canvas:', error);
                 showError('Sorry, there was an error creating the poster image.');
+                // Re-throw the error so handleGenerateImage can catch it
+                throw error; 
             } finally {
                 // Clean up the off-screen div
-                document.body.removeChild(renderContainer);
+                if (document.body.contains(renderContainer)) {
+                    document.body.removeChild(renderContainer);
+                }
             }
         }
 
@@ -428,6 +543,7 @@
     </script>
 </body>
 </html>
+
 
 
 
